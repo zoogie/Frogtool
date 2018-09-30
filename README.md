@@ -1,0 +1,2 @@
+# Frogtool
+Frogminer title manager
