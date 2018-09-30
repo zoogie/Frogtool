@@ -5,6 +5,8 @@
 #include <3ds.h>
 
 #define menu_size 4
+PrintConsole topScreen, bottomScreen;
+AM_TWLPartitionInfo info;
 
 Result import(u64 tid, u8 op, u8 *workbuf, char *ext){
 	Handle handle;
@@ -51,9 +53,9 @@ Result export(u64 tid, u8 op, u8 *workbuf, char *ext){
 	return res;
 }
 
-Result menuUpdate(int cursor){
+Result menuUpdate(int cursor, int showinfo){
 	consoleClear();
-	printf("Frogtool - zoogie\n\n");
+	printf("Frogtool v1.0 - zoogie\n\n");
 	char menu[menu_size][128] = {
 		"IMPORT  patched DS Download Play",
 		"EXPORT  clean   DS Download Play",
@@ -66,6 +68,18 @@ Result menuUpdate(int cursor){
 	}
 	
 	printf("\nPress START to exit\n\n");
+	
+	if(!showinfo){
+		consoleSelect(&bottomScreen);
+		consoleClear();
+		printf("TWL PARTITION INFO\n");
+		printf("                   Bytes       Blocks\n"); 
+		printf("Capacity:          0x%08lX  %04d\n",(u32)info.capacity,(int)info.capacity/0x20000);
+		printf("FreeSpace:         0x%08lX  %04d\n",(u32)info.freeSpace,(int)info.freeSpace/0x20000);
+		printf("TitlesCapacity:    0x%08lX  %04d\n",(u32)info.titlesCapacity,(int)info.titlesCapacity/0x20000);
+		printf("TitlesFreeSpace:   0x%08lX  %04d\n",(u32)info.titlesFreeSpace,(int)info.titlesFreeSpace/0x20000);
+		consoleSelect(&topScreen);
+	}
 	
 	return 0;
 }
@@ -88,25 +102,31 @@ Result waitKey(){
 int main(int argc, char* argv[])
 {
 	gfxInitDefault();
-	consoleInit(GFX_TOP, NULL);
+	consoleInit(GFX_TOP, &topScreen);
+	consoleInit(GFX_BOTTOM, &bottomScreen);
+	consoleSelect(&topScreen);
 	u32 BUF_SIZE = 0x20000;
 	u64 tid=0;
 	u8 op=5;
 	u32 SECOND=1000*1000*1000;
 	int cursor=0;
+	int showinfo=1;
 	
 	u8 *buf = (u8*)malloc(BUF_SIZE);
 	Result res = nsInit();
 	printf("nsInit: %08X\n",(int)res);
 	res = amInit();
-	printf("amInit: %08X\n\n",(int)res);
+	printf("amInit: %08X\n",(int)res);
+	res = AM_GetTWLPartitionInfo(&info);
+	printf("twlInfo: %08X\n\n",(int)res);
+	showinfo=res;
 	svcSleepThread(1*SECOND);
 	tid = 0x00048005484E4441;   //dlp
 	//tid = 0x0004800542383841;
 	//tid = 0x000480044b385545; 
 	//tid = 0x000480044b454e4a; 
 	
-	menuUpdate(cursor);
+	menuUpdate(cursor, showinfo);
 	
 	while (aptMainLoop())
 	{
@@ -128,17 +148,18 @@ int main(int argc, char* argv[])
 				default:;
 			}
 			waitKey();
-			menuUpdate(cursor);
+			showinfo = AM_GetTWLPartitionInfo(&info);
+			menuUpdate(cursor, showinfo);
 		}
 		else if(kDown & KEY_UP){
 			cursor--;
 			if(cursor<0) cursor=0;
-			menuUpdate(cursor);
+			menuUpdate(cursor, showinfo);
 		}
 		else if(kDown & KEY_DOWN){
 			cursor++;
 			if(cursor>=menu_size) cursor=menu_size-1;
-			menuUpdate(cursor);
+			menuUpdate(cursor, showinfo);
 		}
 		
 	}
