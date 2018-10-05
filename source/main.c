@@ -8,6 +8,15 @@
 PrintConsole topScreen, bottomScreen;
 AM_TWLPartitionInfo info;
 
+const char *bkblack="\x1b[40;1m";
+const char *green="\x1b[32;1m";
+const char *yellow="\x1b[33;1m";
+const char *bkyellow="\x1b[43;1m";
+const char *blue="\x1b[34;1m";
+const char *dblue="\x1b[34;0m";
+const char *white="\x1b[37;1m";
+const char *dwhite="\x1b[37;0m";
+
 Result import(u64 tid, u8 op, u8 *workbuf, char *ext){
 	Handle handle;
 	Result res;
@@ -20,6 +29,11 @@ Result import(u64 tid, u8 op, u8 *workbuf, char *ext){
 	
 	memset(fpath, 0, 64);
 	sprintf(fpath,"sdmc:/%08lX%s",(u32)tid, ext);
+	if(access(fpath, F_OK ) == -1 ) {
+		printf("%s missing on SD\n\n",fpath);
+		return 1;
+	
+	}
 	memset(filepath16, 0, sizeof(filepath16));
 	units = utf8_to_utf16(filepath16, (u8*)(fpath+5), len);
 	
@@ -30,6 +44,7 @@ Result import(u64 tid, u8 op, u8 *workbuf, char *ext){
 	printf("import:%d %s\n", op, fpath);
 	res = FSUSER_OpenFileDirectly(&handle, ARCHIVE_SDMC, archPath, filePath, FS_OPEN_READ, 0);
 	printf("fsopen: %08X\n",(int)res);
+	printf("importing dsiware...\n");
 	res = AM_ImportTwlBackup(handle, op, workbuf, 0x20000);
 	printf("twl import: %08X %s\n\n",(int)res, res ? "FAILED!" : "SUCCESS!");
 	FSFILE_Close(handle);
@@ -43,10 +58,10 @@ Result export(u64 tid, u8 op, u8 *workbuf, char *ext){
 	memset(fpath, 0, 128);
 	sprintf(fpath,"sdmc:/%08lX%s",(u32)tid, ext);
 	if(access(fpath, F_OK ) != -1 ) {
-		printf("DS dlp already exists on SD\n");
+		printf("DS dlp already exists on SD\n\n");
 		return 1;
 	}
-	printf("export:%d %016llX to %s\n", op, tid, fpath);
+	printf("exporting:%d %016llX to\n%s...\n", op, tid, fpath);
 	res = AM_ExportTwlBackup(tid, op, workbuf, 0x20000, fpath);
 	printf("twl export: %08X %s\n\n",(int)res, res ? "FAILED!" : "SUCCESS!");
 	
@@ -55,29 +70,41 @@ Result export(u64 tid, u8 op, u8 *workbuf, char *ext){
 
 Result menuUpdate(int cursor, int showinfo){
 	consoleClear();
-	printf("Frogtool v1.0 - zoogie\n\n");
+	printf("%sFrogtool v1.1 - zoogie%s\n\n", green, white);
 	char menu[menu_size][128] = {
-		"IMPORT  patched DS Download Play",
 		"EXPORT  clean   DS Download Play",
+		"IMPORT  patched DS Download Play",
+		"BOOT    patched DS Download Play",
 		"RESTORE clean   DS Download Play",
-		"BOOT    patched DS Download Play"
 	};
 	
 	for(int i=0;i<menu_size;i++){
-		printf("%s %s\n", cursor == i ? "->" : "  ", menu[i]);
+		printf("%s %s%s\n", cursor == i ? bkyellow : bkblack, menu[i], bkblack);
 	}
 	
-	printf("\nPress START to exit\n\n");
+	printf("\n%sPress START to exit%s\n\n", green, white);
 	
 	if(!showinfo){
 		consoleSelect(&bottomScreen);
 		consoleClear();
-		printf("TWL PARTITION INFO\n");
-		printf("                   Bytes       Blocks\n"); 
-		printf("Capacity:          0x%08lX  %04d\n",(u32)info.capacity,(int)info.capacity/0x20000);
-		printf("FreeSpace:         0x%08lX  %04d\n",(u32)info.freeSpace,(int)info.freeSpace/0x20000);
-		printf("TitlesCapacity:    0x%08lX  %04d\n",(u32)info.titlesCapacity,(int)info.titlesCapacity/0x20000);
-		printf("TitlesFreeSpace:   0x%08lX  %04d\n",(u32)info.titlesFreeSpace,(int)info.titlesFreeSpace/0x20000);
+		printf("%sTWL PARTITION INFO   Bytes        Blocks%s", green, white);
+		printf("Capacity:            0x%08lX   %04d\n",(u32)info.capacity,(int)info.capacity/0x20000);
+		printf("FreeSpace:           0x%08lX   %04d\n",(u32)info.freeSpace,(int)info.freeSpace/0x20000);
+		printf("TitlesCapacity:      0x%08lX   %04d\n",(u32)info.titlesCapacity,(int)info.titlesCapacity/0x20000);
+		printf("TitlesFreeSpace:     0x%08lX   %04d\n\n\n\n",(u32)info.titlesFreeSpace,(int)info.titlesFreeSpace/0x20000);
+		printf("%s\n\n\n\n\n", green);
+		printf("                 **  **\n");
+		printf("                * **** *\n");
+		printf("                * **** *\n");
+		printf("                ********\n");
+		printf("               **********\n");
+		printf("               **      **\n");
+		printf("              ***      ***\n");
+		printf("              ****    ****\n");
+		printf("               ****  ****\n");
+		printf("              ************\n");
+		//printf("                  Gero!\n");
+		printf("%s\n", white);
 		consoleSelect(&topScreen);
 	}
 	
@@ -85,7 +112,7 @@ Result menuUpdate(int cursor, int showinfo){
 }
 
 Result waitKey(){
-	printf("\nTap bottom screen to continue ...\n");
+	printf("\nTap the %sFrog%s to continue ...\n", green, white);
 	
 	while(1){
 		gspWaitForVBlank();
@@ -139,12 +166,12 @@ int main(int argc, char* argv[])
 			break; // break in order to return to hbmenu
 		if(kDown & KEY_A){
 			switch(cursor){
-				case 0: import(tid, op, buf, ".bin.patched"); break;
-				case 1: export(tid, op, buf, ".bin"); break;
-				case 2: import(tid, op, buf, ".bin"); break;
-				case 3: printf("Booting dlp now ...\n");
+				case 0: export(tid, op, buf, ".bin"); break;
+				case 1: import(tid, op, buf, ".bin.patched"); break;
+				case 2: printf("Booting dlp now ...\n");
 						NS_RebootToTitle(0, tid); 
 						while(1)gspWaitForVBlank();
+				case 3: import(tid, op, buf, ".bin"); break;
 				default:;
 			}
 			waitKey();

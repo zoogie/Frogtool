@@ -11,7 +11,7 @@ TOPDIR ?= $(CURDIR)
 include $(DEVKITARM)/3ds_rules
 
 APP_TITLE = Frogtool
-APP_DESCRIPTION = Frogminer title manager
+APP_DESCRIPTION = v1.1 - Frogminer title manager
 APP_AUTHOR = zoogie
 
 #---------------------------------------------------------------------------------
