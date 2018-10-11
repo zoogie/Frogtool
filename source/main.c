@@ -82,7 +82,7 @@ Result menuUpdate(int cursor, int showinfo){
 		printf("%s %s%s\n", cursor == i ? bkyellow : bkblack, menu[i], bkblack);
 	}
 	
-	printf("\n%sPress START to exit%s\n\n", green, white);
+	printf("\n%sUP & DOWN to choose, A to select, START to exit%s\n\n", green, white);
 	
 	if(!showinfo){
 		consoleSelect(&bottomScreen);
