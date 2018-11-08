@@ -1,10 +1,15 @@
+#include <3ds.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <3ds.h>
+#include "crypto.h"
+#include "tadpole.h"
+#include "footer_adjust.h"
 
+#define ROMFS "romfs:" //define as "" to load srl.nds and ctcert.bin from sd instead
 #define menu_size 4
+#define WAITA() while (1) {hidScanInput(); if (hidKeysDown() & KEY_A) { break; } }
 PrintConsole topScreen, bottomScreen;
 AM_TWLPartitionInfo info;
 
@@ -17,7 +22,7 @@ const char *dblue="\x1b[34;0m";
 const char *white="\x1b[37;1m";
 const char *dwhite="\x1b[37;0m";
 
-Result import(u64 tid, u8 op, u8 *workbuf, char *ext){
+int import_tad(u64 tid, u8 op, u8 *workbuf, const char *ext){
 	Handle handle;
 	Result res;
 	FS_Path filePath;
@@ -52,7 +57,7 @@ Result import(u64 tid, u8 op, u8 *workbuf, char *ext){
 	return res;
 }
 
-Result export(u64 tid, u8 op, u8 *workbuf, char *ext){
+Result export_tad(u64 tid, u8 op, u8 *workbuf, const char *ext){  //export is a reserved word in c++ TIL
 	Result res;
 	char fpath[256]={0};
 	memset(fpath, 0, 128);
@@ -70,12 +75,12 @@ Result export(u64 tid, u8 op, u8 *workbuf, char *ext){
 
 Result menuUpdate(int cursor, int showinfo){
 	consoleClear();
-	printf("%sFrogtool v1.1 - zoogie%s\n\n", green, white);
+	printf("%sFrogtool v2.0 - zoogie & jason0597%s\n\n", green, white);
 	char menu[menu_size][128] = {
-		"EXPORT  clean   DS Download Play",
-		"IMPORT  patched DS Download Play",
-		"BOOT    patched DS Download Play",
-		"RESTORE clean   DS Download Play",
+		"EXPORT  patched & clean  DS Download Play",
+		"IMPORT  patched          DS Download Play",
+		"BOOT    patched          DS Download Play",
+		"RESTORE clean            DS Download Play",
 	};
 	
 	for(int i=0;i<menu_size;i++){
@@ -126,6 +131,114 @@ Result waitKey(){
 	return 0;
 }
 
+u8 *readAllBytes(const char *filename, u32 *filelen) {
+	FILE *fileptr = fopen(filename, "rb");
+	if (fileptr == NULL) {
+		printf("!!! Failed to open %s !!!\n", filename);
+		WAITA();
+		exit(-1);
+	}
+	fseek(fileptr, 0, SEEK_END);
+	*filelen = ftell(fileptr);
+	rewind(fileptr);
+
+	u8 *buffer = (u8*)malloc(*filelen);
+
+	fread(buffer, *filelen, 1, fileptr);
+	fclose(fileptr);
+
+	return buffer;
+}
+
+void writeAllBytes(const char* filename, u8 *filedata, u32 filelen) {
+	FILE *fileptr = fopen(filename, "wb");
+	fwrite(filedata, 1, filelen, fileptr);
+	fclose(fileptr);
+}
+
+void doStuff() {
+	u8 *dsiware, *ctcert, *injection, *movable;
+	u32 dsiware_size, ctcert_size, movable_size, injection_size;
+	u8 header_hash[0x20], srl_hash[0x20];
+
+	printf("Reading 484E4441.bin\n");
+	dsiware = readAllBytes("/484E4441.bin", &dsiware_size);
+	printf("Reading ctcert.bin\n");
+	ctcert = readAllBytes(ROMFS "/ctcert.bin", &ctcert_size);
+	printf("Reading flipnote srl.nds\n");
+	injection = readAllBytes(ROMFS "/srl.nds", &injection_size);
+	printf("Reading & parsing movable.sed\n");
+	movable = readAllBytes("/movable.sed", &movable_size);
+
+	printf("Scrambling keys\n");
+	u8 normalKey[0x10], normalKey_CMAC[0x10];
+	keyScrambler((movable + 0x110), false, normalKey);
+	keyScrambler((movable + 0x110), true, normalKey_CMAC);
+	
+	// === HEADER ===
+	printf("Decrypting header\n");
+	u8 *header = new u8[0xF0];
+	getSection((dsiware + 0x4020), 0xF0, normalKey, header);
+	
+	if (header[0] != 0x33 || header[1] != 0x46 || header[2] != 0x44 || header[3] != 0x54) {
+		printf("DECRYPTION FAILED!!!\n");
+	}
+
+	printf("Injecting new srl.nds size\n");
+	u8 flipnote_size_LE[4] = {0x00, 0x88, 0x21, 0x00}; // the size of flipnote in little endian
+	memcpy((header + 0x48 + 4), flipnote_size_LE, 4);
+
+	printf("Placing back header\n");
+	placeSection((dsiware + 0x4020), header, 0xF0, normalKey, normalKey_CMAC);
+
+	printf("Calculating new header hash\n");
+	FSUSER_UpdateSha256Context(header, 0xF0, header_hash);
+	delete[] header;
+
+	// === SRL.NDS ===
+	// Basically, the srl.nds of DS Download play is right at the end of the TAD container
+	// Because we don't care about what it contains, we can overwrite it directly with our new
+	// flipnote srl.nds straight off the bat, without having to do any decryption
+	// We of course need to extend our vector of dsiwareBin by the necessary difference in bytes
+	// to accomodate the new flipnote srl.nds (which is 0x218800 in size!!)
+	printf("Resizing array\n");
+	printf("Old DSiWare size: %lX\n", dsiware_size);
+	dsiware_size += (injection_size - 0x69BC0); // new TAD size = old TAD size + (new srl size - old srl size)
+	printf("New DSiWare size: %lX\n", dsiware_size);
+	dsiware = (u8*)realloc(dsiware, dsiware_size);
+	printf("Placing back srl.nds\n");
+	placeSection((dsiware + 0x5190), injection, injection_size, normalKey, normalKey_CMAC);
+
+	printf("Calculating new srl.nds hash\n");
+	FSUSER_UpdateSha256Context(injection, injection_size, srl_hash);
+
+	// === FOOTER ===
+	printf("Decrypting footer\n");
+	footer_t *footer=(footer_t*)malloc(SIZE_FOOTER);
+	getSection((dsiware + 0x4130), 0x4E0, normalKey, (u8*)footer);
+
+	printf("Fixing hashes\n");
+	memcpy(footer->hdr_hash , header_hash, 0x20); //Fix the header hash
+	memcpy(footer->content_hash[0], srl_hash, 0x20);	//Fix the srl.nds hash
+	//calculateSha256((u8*)footer, (13 * 0x20), ((u8*)footer + (13 * 0x20))); //Fix the master hash
+
+	printf("Signing footer\n");
+	doSigning(ctcert, footer);
+	
+	printf("Placing back footer\n");
+	placeSection((dsiware + 0x4130), (u8*)footer, 0x4E0, normalKey, normalKey_CMAC);
+	delete[] footer;
+	
+	printf("Writing sdmc:/484E4441.bin.patched ...\n");
+	writeAllBytes("/484E4441.bin.patched", dsiware, dsiware_size);
+	printf("Done!\n\n");
+
+	free(dsiware);
+	free(ctcert);
+	free(injection);
+	free(movable);
+}
+
 int main(int argc, char* argv[])
 {
 	gfxInitDefault();
@@ -144,6 +257,8 @@ int main(int argc, char* argv[])
 	printf("nsInit: %08X\n",(int)res);
 	res = amInit();
 	printf("amInit: %08X\n",(int)res);
+	res = romfsInit();
+	printf("romfsInit: %08X\n",(int)res);
 	res = AM_GetTWLPartitionInfo(&info);
 	printf("twlInfo: %08X\n\n",(int)res);
 	showinfo=res;
@@ -166,12 +281,12 @@ int main(int argc, char* argv[])
 			break; // break in order to return to hbmenu
 		if(kDown & KEY_A){
 			switch(cursor){
-				case 0: export(tid, op, buf, ".bin"); break;
-				case 1: import(tid, op, buf, ".bin.patched"); break;
+				case 0: export_tad(tid, op, buf, ".bin"); doStuff(); break;
+				case 1: import_tad(tid, op, buf, ".bin.patched"); break;
 				case 2: printf("Booting dlp now ...\n");
 						NS_RebootToTitle(0, tid); 
 						while(1)gspWaitForVBlank();
-				case 3: import(tid, op, buf, ".bin"); break;
+				case 3: import_tad(tid, op, buf, ".bin"); break;
 				default:;
 			}
 			waitKey();
@@ -194,6 +309,7 @@ int main(int argc, char* argv[])
     free(buf);
 	nsExit();
 	amExit();
+	romfsExit();
 	gfxExit();
 	
 	return 0;
