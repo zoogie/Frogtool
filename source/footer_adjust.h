@@ -43,4 +43,5 @@ typedef struct footer_t
 
 
 int doSigning(u8 *ctcert_bin, footer_t *footer);
+Result copyFile(const char *src, const char *dst);
 #endif

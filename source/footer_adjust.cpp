@@ -32,6 +32,25 @@ Result dumpfile(u8 *buf, u32 size, const char *filename){
 	return 0;
 }
 
+Result copyFile(const char *src, const char *dst){
+	u32 limit=0x80000;
+	u8 *copybuf=(u8*)malloc(limit);
+	int bytesread=0;
+	int byteswritten=-1;
+	
+	FILE *f=fopen(src,"rb");
+	bytesread=fread(copybuf, 1, limit, f);
+	fclose(f);
+	if(bytesread){
+		FILE *g=fopen(dst,"wb");
+		byteswritten=fwrite(copybuf, 1, bytesread, g);
+		fclose(g);
+	}
+	free(copybuf);
+	printf("%s - %s\n", dst, bytesread==byteswritten ? "OK":"FAIL");
+	return 0;
+}
+
 int doSigning(u8 *ctcert_bin, footer_t *footer)
 {
 	

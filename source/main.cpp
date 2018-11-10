@@ -3,15 +3,17 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <dirent.h>
 #include "crypto.h"
 #include "tadpole.h"
 #include "footer_adjust.h"
 
 #define ROMFS "romfs:" //define as "" to load srl.nds and ctcert.bin from sd instead
 #define menu_size 4
-#define WAITA() while (1) {hidScanInput(); if (hidKeysDown() & KEY_A) { break; } }
+#define WAITA() while (1) {gspWaitForVBlank(); hidScanInput(); if (hidKeysDown() & KEY_A) { break; } }
 PrintConsole topScreen, bottomScreen;
 AM_TWLPartitionInfo info;
+u8 region=42; //42 would be an error for region, which should be <= 6
 
 const char *bkblack="\x1b[40;1m";
 const char *green="\x1b[32;1m";
@@ -229,7 +231,7 @@ void doStuff() {
 	placeSection((dsiware + 0x4130), (u8*)footer, 0x4E0, normalKey, normalKey_CMAC);
 	delete[] footer;
 	
-	printf("Writing sdmc:/484E4441.bin.patched ...\n");
+	printf("Writing sdmc:/484E4441.bin.patched...\n");
 	writeAllBytes("/484E4441.bin.patched", dsiware, dsiware_size);
 	printf("Done!\n\n");
 
@@ -237,6 +239,16 @@ void doStuff() {
 	free(ctcert);
 	free(injection);
 	free(movable);
+}
+
+Result copyStuff(){
+	printf("Copying files to sdmc ...\n");
+	copyFile("romfs:/boot.nds","/boot.nds");
+	copyFile("romfs:/boot.firm","/boot.firm");
+	mkdir("/private/",0777); mkdir("/private/ds/",0777); mkdir("/private/ds/app/",0777); mkdir("/private/ds/app/4B47554A/",0777); mkdir("/private/ds/app/4B47554A/001/",0777); //inelegant but simple
+	copyFile("romfs:/T00031_1038C2A757B77_000.ppm","/private/ds/app/4B47554A/001/T00031_1038C2A757B77_000.ppm");
+	printf("Done!\n\n");
+	return 0;
 }
 
 int main(int argc, char* argv[])
@@ -251,23 +263,35 @@ int main(int argc, char* argv[])
 	u32 SECOND=1000*1000*1000;
 	int cursor=0;
 	int showinfo=1;
+	Result res;
+	
+	u32 kver = osGetKernelVersion();
+	if(kver != 0x02370000){
+		printf("Your firmware version is not 11.8.0-XX !\nPress A to exit\n");
+		WAITA();
+		return 0;
+	}
 	
 	u8 *buf = (u8*)malloc(BUF_SIZE);
-	Result res = nsInit();
+	res = nsInit();
 	printf("nsInit: %08X\n",(int)res);
 	res = amInit();
 	printf("amInit: %08X\n",(int)res);
+	res = cfguInit();
+	printf("cfguInit: %08X\n",(int)res);
 	res = romfsInit();
 	printf("romfsInit: %08X\n",(int)res);
 	res = AM_GetTWLPartitionInfo(&info);
-	printf("twlInfo: %08X\n\n",(int)res);
+	printf("twlInfo: %08X\n",(int)res);
+	res = CFGU_SecureInfoGetRegion(&region);
+	printf("region: %d\n\n", (int)region);
 	showinfo=res;
-	svcSleepThread(1*SECOND);
+	svcSleepThread(3*SECOND);
 	tid = 0x00048005484E4441;   //dlp
 	//tid = 0x0004800542383841;
 	//tid = 0x000480044b385545; 
 	//tid = 0x000480044b454e4a; 
-	
+
 	menuUpdate(cursor, showinfo);
 	
 	while (aptMainLoop())
@@ -281,7 +305,7 @@ int main(int argc, char* argv[])
 			break; // break in order to return to hbmenu
 		if(kDown & KEY_A){
 			switch(cursor){
-				case 0: export_tad(tid, op, buf, ".bin"); doStuff(); break;
+				case 0: export_tad(tid, op, buf, ".bin"); doStuff(); copyStuff(); break;
 				case 1: import_tad(tid, op, buf, ".bin.patched"); break;
 				case 2: printf("Booting dlp now ...\n");
 						NS_RebootToTitle(0, tid); 
