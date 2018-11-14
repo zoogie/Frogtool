@@ -15,7 +15,7 @@ PrintConsole topScreen, bottomScreen;
 AM_TWLPartitionInfo info;
 u8 region=42; //42 would be an error for region, which should be <= 6
 u8 havecfw=0;
-u8 wrongfirmware=1;
+u8 wrongfirmware=0;
 
 const char *bkblack="\x1b[40;1m";
 const char *green="\x1b[32;1m";
