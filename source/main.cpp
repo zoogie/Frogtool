@@ -9,11 +9,13 @@
 #include "footer_adjust.h"
 
 #define ROMFS "romfs:" //define as "" to load srl.nds and ctcert.bin from sd instead
-#define menu_size 4
+#define menu_size 3
 #define WAITA() while (1) {gspWaitForVBlank(); hidScanInput(); if (hidKeysDown() & KEY_A) { break; } }
 PrintConsole topScreen, bottomScreen;
 AM_TWLPartitionInfo info;
 u8 region=42; //42 would be an error for region, which should be <= 6
+u8 havecfw=0;
+u8 wrongfirmware=1;
 
 const char *bkblack="\x1b[40;1m";
 const char *green="\x1b[32;1m";
@@ -79,8 +81,7 @@ Result menuUpdate(int cursor, int showinfo){
 	consoleClear();
 	printf("%sFrogtool v2.0 - zoogie & jason0597%s\n\n", green, white);
 	char menu[menu_size][128] = {
-		"EXPORT  patched & clean  DS Download Play",
-		"IMPORT  patched          DS Download Play",
+		"INJECT  patched          DS Download Play",
 		"BOOT    patched          DS Download Play",
 		"RESTORE clean            DS Download Play",
 	};
@@ -265,11 +266,16 @@ int main(int argc, char* argv[])
 	int showinfo=1;
 	Result res;
 	
-	u32 kver = osGetKernelVersion();
+	u32 kver = osGetKernelVersion();   //the current recommended frogminer guide requires firm 11.8 so we will enforce that here. if a surprise firm drops and native firm changes, this will safeguard users immediately
 	if(kver != 0x02370000){
-		printf("Your firmware version is not 11.8.0-XX !\nPress A to exit\n");
-		WAITA();
-		return 0;
+		wrongfirmware=1;
+	}
+	
+	FS_Archive archive;
+	res = FSUSER_OpenArchive(&archive, ARCHIVE_NAND_RW, fsMakePath(PATH_EMPTY, "")); //almost all versions of luma or aureinand patch access to this archive which shouln't be available to userland
+	if(res==0){                                                                      //still, this is not a foolproof way to detect a9lh or other type of cfw is installed, but it helps
+		FSUSER_CloseArchive(archive);                                                //the reason we care about cfw is that if a9lh is present, b9sTool will 100% chance brick the user's 3ds
+		havecfw=1;
 	}
 	
 	u8 *buf = (u8*)malloc(BUF_SIZE);
@@ -305,12 +311,16 @@ int main(int argc, char* argv[])
 			break; // break in order to return to hbmenu
 		if(kDown & KEY_A){
 			switch(cursor){
-				case 0: export_tad(tid, op, buf, ".bin"); doStuff(); copyStuff(); break;
-				case 1: import_tad(tid, op, buf, ".bin.patched"); break;
-				case 2: printf("Booting dlp now ...\n");
+				case 0: if(havecfw) {printf("You already have CFW!\n\n"); break;}
+						if(wrongfirmware) {printf("You are not on firm 11.8.0-XX!\n\n"); break;}
+						export_tad(tid, op, buf, ".bin"); doStuff();
+				        import_tad(tid, op, buf, ".bin.patched");  copyStuff(); break;
+				case 1: if(havecfw) {printf("You already have CFW!\n\n"); break;}
+						if(wrongfirmware) {printf("You are not on firm 11.8.0-XX!\n\n"); break;}
+						printf("Booting dlp now ...\n");
 						NS_RebootToTitle(0, tid); 
 						while(1)gspWaitForVBlank();
-				case 3: import_tad(tid, op, buf, ".bin"); break;
+				case 2: import_tad(tid, op, buf, ".bin"); break;
 				default:;
 			}
 			waitKey();
