@@ -7,6 +7,7 @@
 #include "crypto.h"
 #include "tadpole.h"
 #include "footer_adjust.h"
+#include "superfrog_bin.h"
 
 #define ROMFS "romfs:" //define as "" to load srl.nds and ctcert.bin from sd instead
 #define menu_size 3
@@ -120,7 +121,7 @@ Result menuUpdate(int cursor, int showinfo){
 }
 
 Result waitKey(){
-	printf("\nTap the %sFrog%s to continue ...\n", green, white);
+	printf("\nTouch the %sFrogs%s to continue ...\n", green, white);
 	
 	while(1){
 		gspWaitForVBlank();
@@ -244,8 +245,8 @@ void doStuff() {
 
 Result copyStuff(){
 	printf("Copying files to sdmc ...\n");
-	copyFile("romfs:/boot.nds","/boot.nds");
-	copyFile("romfs:/boot.firm","/boot.firm");
+	//copyFile("romfs:/boot.nds","/boot.nds");  ;-;
+	//copyFile("romfs:/boot.firm","/boot.firm");
 	mkdir("/private/",0777); mkdir("/private/ds/",0777); mkdir("/private/ds/app/",0777); mkdir("/private/ds/app/4B47554A/",0777); mkdir("/private/ds/app/4B47554A/001/",0777); //inelegant but simple
 	copyFile("romfs:/T00031_1038C2A757B77_000.ppm","/private/ds/app/4B47554A/001/T00031_1038C2A757B77_000.ppm");
 	printf("Done!\n\n");
@@ -255,9 +256,10 @@ Result copyStuff(){
 int main(int argc, char* argv[])
 {
 	gfxInitDefault();
-	consoleInit(GFX_TOP, &topScreen);
-	consoleInit(GFX_BOTTOM, &bottomScreen);
-	consoleSelect(&topScreen);
+	consoleInit(GFX_TOP, NULL);
+	gfxSetDoubleBuffering(GFX_BOTTOM, false);
+	u8* fb = gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, NULL, NULL);
+	
 	u32 BUF_SIZE = 0x20000;
 	u64 tid=0;
 	u8 op=5;
@@ -279,10 +281,10 @@ int main(int argc, char* argv[])
 	}
 	
 	u8 *buf = (u8*)malloc(BUF_SIZE);
-	res = nsInit();
-	printf("nsInit: %08X\n",(int)res);
 	res = amInit();
 	printf("amInit: %08X\n",(int)res);
+	res = nsInit();
+	printf("nsInit: %08X\n",(int)res);
 	res = cfguInit();
 	printf("cfguInit: %08X\n",(int)res);
 	res = romfsInit();
@@ -291,13 +293,10 @@ int main(int argc, char* argv[])
 	printf("twlInfo: %08X\n",(int)res);
 	res = CFGU_SecureInfoGetRegion(&region);
 	printf("region: %d\n\n", (int)region);
-	showinfo=res;
-	svcSleepThread(3*SECOND);
+	svcSleepThread(2*SECOND);
 	tid = 0x00048005484E4441;   //dlp
-	//tid = 0x0004800542383841;
-	//tid = 0x000480044b385545; 
-	//tid = 0x000480044b454e4a; 
 
+	memcpy(fb, superfrog_bin, superfrog_bin_size);
 	menuUpdate(cursor, showinfo);
 	
 	while (aptMainLoop())
@@ -315,8 +314,8 @@ int main(int argc, char* argv[])
 						if(wrongfirmware) {printf("You are not on firm 11.8.0-XX!\n\n"); break;}
 						export_tad(tid, op, buf, ".bin"); doStuff();
 				        import_tad(tid, op, buf, ".bin.patched");  copyStuff(); break;
-				case 1: if(havecfw) {printf("You already have CFW!\n\n"); break;}
-						if(wrongfirmware) {printf("You are not on firm 11.8.0-XX!\n\n"); break;}
+				case 1: //if(havecfw) {printf("You already have CFW!\n\n"); break;}
+						//if(wrongfirmware) {printf("You are not on firm 11.8.0-XX!\n\n"); break;}
 						printf("Booting dlp now ...\n");
 						NS_RebootToTitle(0, tid); 
 						while(1)gspWaitForVBlank();
@@ -324,7 +323,7 @@ int main(int argc, char* argv[])
 				default:;
 			}
 			waitKey();
-			showinfo = AM_GetTWLPartitionInfo(&info);
+			//showinfo = AM_GetTWLPartitionInfo(&info);
 			menuUpdate(cursor, showinfo);
 		}
 		else if(kDown & KEY_UP){
