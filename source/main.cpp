@@ -6,7 +6,6 @@
 #include <dirent.h>
 #include "crypto.h"
 #include "tadpole.h"
-#include "footer_adjust.h"
 #include "superfrog_bin.h"
 
 #define ROMFS "romfs:" //define as "" to load srl.nds and ctcert.bin from sd instead
@@ -294,8 +293,8 @@ int main(int argc, char* argv[])
 	res = CFGU_SecureInfoGetRegion(&region);
 	printf("region: %d\n\n", (int)region);
 	svcSleepThread(2*SECOND);
+	
 	tid = 0x00048005484E4441;   //dlp
-
 	memcpy(fb, superfrog_bin, superfrog_bin_size);
 	menuUpdate(cursor, showinfo);
 	
