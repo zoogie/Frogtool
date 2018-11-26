@@ -225,7 +225,7 @@ void doStuff() {
 	memcpy(footer->content_hash[0], srl_hash, 0x20);	//Fix the srl.nds hash
 	//calculateSha256((u8*)footer, (13 * 0x20), ((u8*)footer + (13 * 0x20))); //Fix the master hash
 
-	printf("Signing footer\n");
+	printf("Signing footer...\n");
 	doSigning(ctcert, footer);
 	
 	printf("Placing back footer\n");

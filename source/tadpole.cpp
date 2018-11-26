@@ -110,7 +110,7 @@ int doSigning(u8 *ctcert_bin, footer_t *footer)
 	ecc_cert_t *ap_cert = &footer->ap;
 	ap_cert=(ecc_cert_t*)malloc(SIZE_CTCERTBIN);
 
-	printf("  loading keys from ctcert.bin...\n");
+	printf("\n  loading keys from ctcert.bin...\n");
 	//load2buffer(ctcert_bin, SIZE_CTCERTBIN, "/ctcert.bin");
 	memcpy(ct_cert, ctcert_bin, 0x180);
 	memcpy(ct_priv, ctcert_bin+0x180, 0x1e);
@@ -131,10 +131,9 @@ int doSigning(u8 *ctcert_bin, footer_t *footer)
 	ec_priv_to_pub(ap_priv, ap_cert->pubkey.r);// pub key
 	ap_cert->sig.type = 0x05000100;// sig
 	
-	FSUSER_UpdateSha256Context((uint8_t*)ap_cert->issuer, 0x100, temp_hash);
-	
 	printf("  signing ap...\n"); // actually sign it
-	rv = generate_ecdsa(ap_cert->sig.val.r, ap_cert->sig.val.s, ct_priv, temp_hash);
+	FSUSER_UpdateSha256Context((uint8_t*)ap_cert->issuer, 0x100, temp_hash);
+	while((rv = generate_ecdsa(ap_cert->sig.val.r, ap_cert->sig.val.s, ct_priv, temp_hash, ct_cert->pubkey.r)));
 	if(rv < 0)
 	{
 		printf("  error: problem signing AP\n");
@@ -143,38 +142,14 @@ int doSigning(u8 *ctcert_bin, footer_t *footer)
 	// now sign the actual footer
 	printf("  signing footer...\n");
 	FSUSER_UpdateSha256Context(footer, 0x1A0, temp_hash);
-	rv = generate_ecdsa(footer->sig.r, footer->sig.s, ap_priv, temp_hash);
+	while((rv = generate_ecdsa(footer->sig.r, footer->sig.s, ap_priv, temp_hash, ap_cert->pubkey.r)));
 	if(rv < 0)
 	{
 		printf("  error: problem signing footer\n");
 	}
 
-	printf("  re-verifying footer sig...  "); printf("\r  re-verifying footer sig...  "); //this printf is glitchy looking without this hacky workaround
-	FSUSER_UpdateSha256Context(footer, 0x1A0, temp_hash);
-	rv = check_ecdsa(ap_cert->pubkey.r, footer->sig.r, footer->sig.s, temp_hash);
-	if(rv == 1)
-	{
-		printf("  GOOD!\n");
-	}
-	else
-	{
-		printf("  BAD\n");
-		res |= 1;
-	}
-	printf("  re-verifying ap sig...      "); printf("\r  re-verifying ap sig...      ");
-	FSUSER_UpdateSha256Context((uint8_t*)ap_cert->issuer, sizeof(ecc_cert_t)-sizeof(ap_cert->sig), temp_hash);
-	rv = check_ecdsa(ct_cert->pubkey.r, ap_cert->sig.val.r, ap_cert->sig.val.s, temp_hash);
-	if(rv == 1)
-	{
-		printf("  GOOD!\n");
-	}
-	else
-	{
-		printf("  BAD\n");
-		res |= 2;
-	}
 	
-	if(res){
+	if(rv){
 		printf("  OVERALL: %d FAIL!!!\n",(int)res);
 	}
 	else{
@@ -184,7 +159,7 @@ int doSigning(u8 *ctcert_bin, footer_t *footer)
 	memcpy(&footer->ap, ap_cert, 0x180);
 	memcpy(&footer->ct, ct_cert, 0x180);
 	
-	printf("  signing complete!\n");
+	printf("  signing complete!\n\n");
 
 	return 0;
 }
