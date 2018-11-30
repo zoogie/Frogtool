@@ -5,26 +5,41 @@
 #include "tadpole.h"
 #include "ec.h"
 
-typedef uint32_t element[8];
-void ninty_233_ecdsa_sign_sha256(uint8_t * input, int length, const uint8_t * private_key, element r_out, element s_out);
-void elem_to_os(const element src, uint8_t * output_os);
-
 void getSection(u8 *dsiware_pointer, u32 section_size, u8 *key, u8 *output) {
-        decryptAES(dsiware_pointer, section_size, key, (dsiware_pointer + section_size + 0x10), output);
+    decryptAES(dsiware_pointer, section_size, key, (dsiware_pointer + section_size + 0x10), output);
 }
 
 void placeSection(u8 *dsiware_pointer, u8 *section, u32 section_size, u8 *key, u8 *key_cmac) {
-        u8 allzero[0x10]= {0};
+    u8 allzero[0x10]= {0};
 
-        encryptAES(section, section_size, key, allzero, dsiware_pointer);
+    encryptAES(section, section_size, key, allzero, dsiware_pointer);
 
-        u8 section_hash[0x20];
-        calculateSha256(section, section_size, section_hash);
-        u8 section_cmac[0x20];
-        calculateCMAC(section_hash, 0x20, key_cmac, section_cmac);
+    u8 section_hash[0x20];
+	calculateSha256(section, section_size, section_hash);
+    u8 section_cmac[0x20];
+    calculateCMAC(section_hash, 0x20, key_cmac, section_cmac);
 
-        memcpy((dsiware_pointer + section_size), section_cmac, 0x10);
-        memset((dsiware_pointer + section_size + 0x10), 0, 0x10);
+    memcpy((dsiware_pointer + section_size), section_cmac, 0x10);
+    memset((dsiware_pointer + section_size + 0x10), 0, 0x10);
+}
+
+Result copyFile(const char *src, const char *dst) {
+	u32 limit=0x80000;
+	u8 *copybuf=(u8*)malloc(limit);
+	int bytesread=0;
+	int byteswritten=-1;
+	
+	FILE *f=fopen(src,"rb");
+	bytesread=fread(copybuf, 1, limit, f);
+	fclose(f);
+	if(bytesread){
+		FILE *g=fopen(dst,"wb");
+		byteswritten=fwrite(copybuf, 1, bytesread, g);
+		fclose(g);
+	}
+	free(copybuf);
+	printf("%s - %s\n", dst, bytesread==byteswritten ? "OK":"FAIL");
+	return 0;
 }
 
 /*
@@ -49,52 +64,7 @@ void placeSection(u8 *dsiware_pointer, u8 *section, u32 section_size, u8 *key, u
 
 */
 
-Result load2buffer(u8 *buf, u32 size, const char *filename){
-	u32 bytesread=0;
-	FILE *f=fopen(filename,"rb");
-	bytesread=fread(buf, 1, size, f);
-	fclose(f);
-	if(bytesread != size){
-		printf("File read error: %s\n", filename);
-		return 1;
-	}
-	return 0;
-}
-
-Result dumpfile(u8 *buf, u32 size, const char *filename){
-	u32 byteswritten=0;
-	FILE *f=fopen(filename,"wb");
-	byteswritten=fwrite(buf, 1, size, f);
-	fclose(f);
-	if(byteswritten != size){
-		printf("File write error: %s\n", filename);
-		return 1;
-	}
-	return 0;
-}
-
-Result copyFile(const char *src, const char *dst){
-	u32 limit=0x80000;
-	u8 *copybuf=(u8*)malloc(limit);
-	int bytesread=0;
-	int byteswritten=-1;
-	
-	FILE *f=fopen(src,"rb");
-	bytesread=fread(copybuf, 1, limit, f);
-	fclose(f);
-	if(bytesread){
-		FILE *g=fopen(dst,"wb");
-		byteswritten=fwrite(copybuf, 1, bytesread, g);
-		fclose(g);
-	}
-	free(copybuf);
-	printf("%s - %s\n", dst, bytesread==byteswritten ? "OK":"FAIL");
-	return 0;
-}
-
-int doSigning(u8 *ctcert_bin, footer_t *footer)
-{
-	
+int doSigning(u8 *ctcert_bin, footer_t *footer) {	
 	Result res=0;
 	uint8_t ct_priv[0x1e];
 	uint8_t tmp_pub[0x3c];
@@ -111,7 +81,6 @@ int doSigning(u8 *ctcert_bin, footer_t *footer)
 	ap_cert=(ecc_cert_t*)malloc(SIZE_CTCERTBIN);
 
 	printf("\n  loading keys from ctcert.bin...\n");
-	//load2buffer(ctcert_bin, SIZE_CTCERTBIN, "/ctcert.bin");
 	memcpy(ct_cert, ctcert_bin, 0x180);
 	memcpy(ct_priv, ctcert_bin+0x180, 0x1e);
 	
@@ -147,7 +116,6 @@ int doSigning(u8 *ctcert_bin, footer_t *footer)
 	{
 		printf("  error: problem signing footer\n");
 	}
-
 	
 	if(rv){
 		printf("  OVERALL: %d FAIL!!!\n",(int)res);
