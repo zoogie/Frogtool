@@ -1,20 +1,13 @@
-#include <mbedtls/aes.h>
-#include <mbedtls/sha256.h>
+#include <3ds.h>
 #include "aes-cbc-cmac.h"
 #include "crypto.h"
 
 void encryptAES(u8 *plaintext, u32 size, u8 *key, u8 *iv, u8 *output) {
-	mbedtls_aes_context curctx;
-	mbedtls_aes_init(&curctx);
-	mbedtls_aes_setkey_enc(&curctx, key, 128);
-	mbedtls_aes_crypt_cbc(&curctx, MBEDTLS_AES_ENCRYPT, size, iv, plaintext, output);
+	AES_CBC_ENC(iv, key, plaintext, size, output, size);
 }
 
 void decryptAES(u8 *ciphertext, u32 size, u8 *key, u8 *iv, u8 *output) {
-	mbedtls_aes_context curctx;
-	mbedtls_aes_init(&curctx);
-	mbedtls_aes_setkey_dec(&curctx, key, 128);
-	mbedtls_aes_crypt_cbc(&curctx, MBEDTLS_AES_DECRYPT, size, iv, ciphertext, output);
+	AES_CBC_DEC(iv, key, ciphertext, size, output, size);
 }
 
 void calculateCMAC(u8 *input, u32 size, u8 *key, u8 *output) {
@@ -22,11 +15,7 @@ void calculateCMAC(u8 *input, u32 size, u8 *key, u8 *output) {
 }
 
 void calculateSha256(u8 *input, u32 size, u8 *output) {
-    mbedtls_sha256_context curctx;
-    mbedtls_sha256_init(&curctx);
-    mbedtls_sha256_starts(&curctx, 0);
-    mbedtls_sha256_update(&curctx, input, size);
-    mbedtls_sha256_finish(&curctx, output);
+	FSUSER_UpdateSha256Context(input, size, output);
 }
 
 // Full credit goes to https://github.com/luigoalma/3ds_keyscrambler/blob/master/src/UnScrambler.c#L50

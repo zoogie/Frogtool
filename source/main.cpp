@@ -8,9 +8,9 @@
 #include "tadpole.h"
 #include "superfrog_bin.h"
 
-#define ROMFS "romfs:" //define as "" to load srl.nds and ctcert.bin from sd instead
 #define menu_size 3
-#define WAITA() while (1) {gspWaitForVBlank(); hidScanInput(); if (hidKeysDown() & KEY_A) { break; } }
+#define FROGHASH "\xb8\x50\x8a\x15\x95\xdb\x0b\xab"
+#define WAIT() while (1) {gspWaitForVBlank(); hidScanInput(); if (hidKeysDown() & KEY_START) { break; } }
 PrintConsole topScreen, bottomScreen;
 AM_TWLPartitionInfo info;
 u8 region=42; //42 would be an error for region, which should be <= 6
@@ -79,7 +79,7 @@ Result export_tad(u64 tid, u8 op, u8 *workbuf, const char *ext){  //export is a 
 
 Result menuUpdate(int cursor, int showinfo){
 	consoleClear();
-	printf("%sFrogtool v2.0 - zoogie & jason0597%s\n\n", green, white);
+	printf("%sFrogtool v2.1 - zoogie & jason0597%s\n\n", green, white);
 	char menu[menu_size][128] = {
 		"INJECT  patched          DS Download Play",
 		"BOOT    patched          DS Download Play",
@@ -137,9 +137,14 @@ Result waitKey(){
 u8 *readAllBytes(const char *filename, u32 *filelen) {
 	FILE *fileptr = fopen(filename, "rb");
 	if (fileptr == NULL) {
-		printf("!!! Failed to open %s !!!\n", filename);
-		WAITA();
-		exit(-1);
+		printf("ERROR: Failed to open sdmc:%s !!!\n\n", filename);
+		printf("Press START to exit\n");
+		WAIT();
+		nsExit();  //see if we can exit in a civilized manner here
+		amExit();
+		romfsExit();
+		gfxExit();
+		exit(0);
 	}
 	fseek(fileptr, 0, SEEK_END);
 	*filelen = ftell(fileptr);
@@ -159,36 +164,52 @@ void writeAllBytes(const char* filename, u8 *filedata, u32 filelen) {
 	fclose(fileptr);
 }
 
-void doStuff() {
-	u8 *dsiware, *ctcert, *injection, *movable;
+Result doStuff() {
+	Result res=0;
 	u32 dsiware_size, ctcert_size, movable_size, injection_size;
+	u8 *dsiware, *ctcert, *injection, *movable;
 	u8 header_hash[0x20], srl_hash[0x20];
-
-	printf("Reading 484E4441.bin\n");
-	dsiware = readAllBytes("/484E4441.bin", &dsiware_size);
-	printf("Reading ctcert.bin\n");
-	ctcert = readAllBytes(ROMFS "/ctcert.bin", &ctcert_size);
-	printf("Reading flipnote srl.nds\n");
-	injection = readAllBytes(ROMFS "/srl.nds", &injection_size);
-	printf("Reading & parsing movable.sed\n");
-	movable = readAllBytes("/movable.sed", &movable_size);
-
-	printf("Scrambling keys\n");
+	u8 flipnote_size_LE[4] = {0x00, 0x88, 0x21, 0x00}; // the size of flipnote in little endian
+	footer_t *footer=(footer_t*)malloc(SIZE_FOOTER);
 	u8 normalKey[0x10], normalKey_CMAC[0x10];
+	u8 *header = new u8[0xF0];
+	
+	ctcert_size = 0x19E;
+	ctcert = (u8*)malloc(ctcert_size);
+	
+	printf("Reading sdmc:/484E4441.bin\n");
+	dsiware = readAllBytes("/484E4441.bin", &dsiware_size);
+	printf("Reading & parsing sdmc:/movable.sed\n");
+	movable = readAllBytes("/movable.sed", &movable_size);
+	printf("Reading sdmc:/frogcert.bin\n");
+	injection = readAllBytes("/frogcert.bin", &injection_size);
+	FSUSER_UpdateSha256Context(injection, injection_size, srl_hash);
+	injection_size -= ctcert_size;
+	memcpy(ctcert, injection + injection_size, ctcert_size);
+	
+	printf("Checking frogcert.bin\n");
+	if(memcmp(srl_hash, FROGHASH, 8)) {
+		printf("Oh noes, sdmc:/frogcert.bin is corrupted!\n");
+		res = 4;
+		goto fail;
+	}
+	
+	printf("Scrambling keys\n");
 	keyScrambler((movable + 0x110), false, normalKey);
 	keyScrambler((movable + 0x110), true, normalKey_CMAC);
 	
 	// === HEADER ===
 	printf("Decrypting header\n");
-	u8 *header = new u8[0xF0];
 	getSection((dsiware + 0x4020), 0xF0, normalKey, header);
 	
 	if (header[0] != 0x33 || header[1] != 0x46 || header[2] != 0x44 || header[3] != 0x54) {
-		printf("DECRYPTION FAILED!!!\n");
+		printf("DECRYPTION FAILED!!!\nThis likely means the input movable.sed is wrong\nPress START to continue\n");
+		WAIT();
+		res=3;
+		goto fail;
 	}
 
 	printf("Injecting new srl.nds size\n");
-	u8 flipnote_size_LE[4] = {0x00, 0x88, 0x21, 0x00}; // the size of flipnote in little endian
 	memcpy((header + 0x48 + 4), flipnote_size_LE, 4);
 
 	printf("Placing back header\n");
@@ -217,7 +238,6 @@ void doStuff() {
 
 	// === FOOTER ===
 	printf("Decrypting footer\n");
-	footer_t *footer=(footer_t*)malloc(SIZE_FOOTER);
 	getSection((dsiware + 0x4130), 0x4E0, normalKey, (u8*)footer);
 
 	printf("Fixing hashes\n");
@@ -226,7 +246,7 @@ void doStuff() {
 	//calculateSha256((u8*)footer, (13 * 0x20), ((u8*)footer + (13 * 0x20))); //Fix the master hash
 
 	printf("Signing footer...\n");
-	doSigning(ctcert, footer);
+	if((res = doSigning(ctcert, footer))) goto fail;
 	
 	printf("Placing back footer\n");
 	placeSection((dsiware + 0x4130), (u8*)footer, 0x4E0, normalKey, normalKey_CMAC);
@@ -236,10 +256,12 @@ void doStuff() {
 	writeAllBytes("/484E4441.bin.patched", dsiware, dsiware_size);
 	printf("Done!\n\n");
 
+	fail:
 	free(dsiware);
 	free(ctcert);
 	free(injection);
 	free(movable);
+	return res;
 }
 
 Result copyStuff(){
@@ -248,7 +270,7 @@ Result copyStuff(){
 	//copyFile("romfs:/boot.firm","/boot.firm");
 	mkdir("/private/",0777); mkdir("/private/ds/",0777); mkdir("/private/ds/app/",0777); mkdir("/private/ds/app/4B47554A/",0777); mkdir("/private/ds/app/4B47554A/001/",0777); //inelegant but simple
 	copyFile("romfs:/T00031_1038C2A757B77_000.ppm","/private/ds/app/4B47554A/001/T00031_1038C2A757B77_000.ppm");
-	printf("Done!\n\n");
+	printf("Done!\n");
 	return 0;
 }
 
@@ -265,6 +287,7 @@ int main(int argc, char* argv[])
 	u32 SECOND=1000*1000*1000;
 	int cursor=0;
 	int showinfo=1;
+	const char *ppm="/private/ds/app/4B47554A/001/T00031_1038C2A757B77_000.ppm";
 	Result res;
 	
 	u32 kver = osGetKernelVersion();   //the current recommended frogminer guide requires firm 11.8 so we will enforce that here. if a surprise firm drops and native firm changes, this will safeguard users immediately
@@ -291,7 +314,34 @@ int main(int argc, char* argv[])
 	res = AM_GetTWLPartitionInfo(&info);
 	printf("twlInfo: %08X\n",(int)res);
 	res = CFGU_SecureInfoGetRegion(&region);
-	printf("region: %d\n\n", (int)region);
+	printf("region: %d\n", (int)region);
+	
+	if(access(ppm, F_OK ) != -1){ 
+		printf("ppm: ready!\n");
+	}
+	else{
+		copyStuff();
+		if(access(ppm, F_OK ) == -1){
+			printf("ERROR: Your flipnote .ppm file cannot be written!\n");
+			printf("Please copy it to sdmc manually!\n");
+			printf("(sdmc:%s)\n", ppm);
+			WAIT();
+			goto fail;
+		}
+	}
+	
+	res = seed_check();
+	if(res){
+		if(res==3)printf("ERROR: sdmc:/movable.sed keyy isn't correct!\n");
+		else printf("ERROR: sdmc:/movable.sed couldn't be read!\nDid you forget it?\n");
+		WAIT();
+		goto fail;
+	}
+	else{
+		printf("movable.sed: good!\n");
+	}
+	
+	printf("\n");
 	svcSleepThread(2*SECOND);
 	
 	tid = 0x00048005484E4441;   //dlp
@@ -310,9 +360,9 @@ int main(int argc, char* argv[])
 		if(kDown & KEY_A){
 			switch(cursor){
 				case 0: if(havecfw) {printf("You already have CFW!\n\n"); break;}
-						if(wrongfirmware) {printf("You are not on firm 11.8.0-XX!\n\n"); break;}
-						export_tad(tid, op, buf, ".bin"); doStuff();
-				        import_tad(tid, op, buf, ".bin.patched");  copyStuff(); break;
+						if(wrongfirmware) {printf("You are not on the correct firmware!\n\n"); break;}
+						export_tad(tid, op, buf, ".bin"); if(doStuff()) break;
+				        import_tad(tid, op, buf, ".bin.patched"); break;
 				case 1: //if(havecfw) {printf("You already have CFW!\n\n"); break;}
 						//if(wrongfirmware) {printf("You are not on firm 11.8.0-XX!\n\n"); break;}
 						printf("Booting dlp now ...\n");
@@ -337,6 +387,8 @@ int main(int argc, char* argv[])
 		}
 		
 	}
+	
+	fail:
 
     free(buf);
 	nsExit();

@@ -92,74 +92,133 @@ Result copyFile(const char *src, const char *dst){
 	return 0;
 }
 
-int doSigning(u8 *ctcert_bin, footer_t *footer)
+Result seed_check()
 {
+	u32 ret=0;
+	u8 msed[0x10]={0};
+	u8 msed_sha256[0x20]={0};
+	u8 msed_id0_buf[0x10]={0};
+	char msed_id0_str[0x20+1]={0};
+	u16 ctrpath[0x80]={0};
+	char ctrpath_id0[0x20+1]={1}; //"1" so it won't memcmp match msed_id0 by default
+	int i=0,j=0;
 	
-	Result res=0;
-	uint8_t ct_priv[0x1e];
-	uint8_t tmp_pub[0x3c];
-	uint8_t temp_hash[0x20];
-	int rv;
-	ecc_cert_t *ct_cert = &footer->ct;
-	ct_cert=(ecc_cert_t*)malloc(SIZE_CTCERTBIN);
-
-	uint8_t ap_priv[0x1e];
-	memset(ap_priv, 0, 0x1e);
-	ap_priv[0x1d]=1;
-
-	ecc_cert_t *ap_cert = &footer->ap;
-	ap_cert=(ecc_cert_t*)malloc(SIZE_CTCERTBIN);
-
-	printf("\n  loading keys from ctcert.bin...\n");
-	//load2buffer(ctcert_bin, SIZE_CTCERTBIN, "/ctcert.bin");
-	memcpy(ct_cert, ctcert_bin, 0x180);
-	memcpy(ct_priv, ctcert_bin+0x180, 0x1e);
-	
-	ec_priv_to_pub(ct_priv, tmp_pub);
-	if(memcmp(tmp_pub, &ct_cert->pubkey, sizeof(tmp_pub)) != 0)
-	{
-		printf("error: ecc priv key does not correspond to the cert\n");
+	FILE *f=fopen("/movable.sed","rb");
+	if(!f){
+		return 2;
 	}
-
-	printf("  using zeroed AP privkey to generate AP cert...\n");
-	memset(ap_cert, 0, sizeof(*ap_cert));
-	memcpy(&ap_cert->key_id, &footer->ap.key_id, 0x40);
-
-	snprintf(ap_cert->issuer, sizeof(ap_cert->issuer), "%s-%s", ct_cert->issuer, ct_cert->key_id); // cert chain
-
-	ap_cert->key_type = 0x02000000; // key type
-	ec_priv_to_pub(ap_priv, ap_cert->pubkey.r);// pub key
-	ap_cert->sig.type = 0x05000100;// sig
-	
-	printf("  signing ap...\n"); // actually sign it
-	FSUSER_UpdateSha256Context((uint8_t*)ap_cert->issuer, 0x100, temp_hash);
-	while((rv = generate_ecdsa(ap_cert->sig.val.r, ap_cert->sig.val.s, ct_priv, temp_hash, ct_cert->pubkey.r)));
-	if(rv < 0)
-	{
-		printf("  error: problem signing AP\n");
-	}
-
-	// now sign the actual footer
-	printf("  signing footer...\n");
-	FSUSER_UpdateSha256Context(footer, 0x1A0, temp_hash);
-	while((rv = generate_ecdsa(footer->sig.r, footer->sig.s, ap_priv, temp_hash, ap_cert->pubkey.r)));
-	if(rv < 0)
-	{
-		printf("  error: problem signing footer\n");
-	}
-
-	
-	if(rv){
-		printf("  OVERALL: %d FAIL!!!\n",(int)res);
+	fseek(f, 0x110, SEEK_SET);
+	ret = fread(msed, 1, 0x10, f);
+	fclose(f);
+	if(ret != 0x10){
+		return 1;
 	}
 	else{
-		printf("  OVERALL: SUCCESS!!\n");
+		ret = FSUSER_GetSdmcCtrRootPath((u8*)ctrpath, 0x80*2);
+		for(i=0;i<32;i++){
+			ctrpath_id0[i]=toupper((char)ctrpath[14+i]);
+		}
 	}
 	
-	memcpy(&footer->ap, ap_cert, 0x180);
-	memcpy(&footer->ct, ct_cert, 0x180);
+	FSUSER_UpdateSha256Context(msed, 0x10, msed_sha256);
 	
-	printf("  signing complete!\n\n");
+	for(i=0;i<16;i+=4){
+		for(j=0;j<4;j++){
+			msed_id0_buf[i+j]=msed_sha256[i+(3-j)];
+		}
+	}
+	
+	for(i=0;i<32;i+=2){
+		sprintf(&msed_id0_str[i],"%02X", msed_id0_buf[i/2]);
+	}
+	
+	ctrpath_id0[0x20]=0; msed_id0_str[0x20]=0; //make certain of null terminators
+	if(memcmp(ctrpath_id0, msed_id0_str, 0x20))return 3;
+		
+	return 0;
+}
+
+Result doSigning(u8 *ctcert_bin, footer_t *footer) {
+	Result res;
+	u8 ct_priv[0x1E], ap_priv[0x1E], tmp_pub[0x3C], tmp_hash[0x20];
+	memset(ap_priv, 0, 0x1E);
+	ecc_cert_t ct_cert, ap_cert;
+	ap_priv[0x1D]=1;
+
+	printf("loading keys from ctcert.bin...\n");
+	memcpy(&ct_cert, ctcert_bin, 0x180);
+	memcpy(ct_priv, (ctcert_bin + 0x180), 0x1E);
+	
+	ec_priv_to_pub(ct_priv, tmp_pub);
+	if (memcmp(tmp_pub, &ct_cert.pubkey, sizeof(tmp_pub)) != 0) {
+		printf("error: ecc priv key does not correspond to the cert\n");
+		return -1;
+	}
+
+	printf("using zeroed AP privkey to generate AP cert...\n");
+	memset(&ap_cert, 0, sizeof(ap_cert));
+	memcpy(&ap_cert.key_id, &footer->ap.key_id, 0x40);
+
+	snprintf(ap_cert.issuer, sizeof(ap_cert.issuer), "%s-%s", ct_cert.issuer, ct_cert.key_id);
+
+	ap_cert.key_type = 0x02000000; // key type
+	ec_priv_to_pub(ap_priv, ap_cert.pubkey.r);// pub key
+	ap_cert.sig.type = 0x05000100;// sig
+	
+	//srand(time(0));
+	//int check=rand();
+	//printf("%08X\n",check); 
+	int sanity=25;
+	bool randsig=false;
+	
+	do{
+		printf("signing ap...\n"); // actually sign it
+		calculateSha256((u8*)ap_cert.issuer, 0x100, tmp_hash); //calculateSha256((u8*)&check, 4, tmp_hash);
+		res = generate_ecdsa(ap_cert.sig.val.r, ap_cert.sig.val.s, ct_priv, tmp_hash, randsig);
+
+		printf("re-verifying ap sig...      ");
+		calculateSha256((u8*)ap_cert.issuer, 0x100, tmp_hash); //calculateSha256((u8*)&check, 4, tmp_hash);
+		res = check_ecdsa(ct_cert.pubkey.r, ap_cert.sig.val.r, ap_cert.sig.val.s, tmp_hash);
+		if (res == 1) {
+			printf("GOOD!\n");
+		} else {
+			printf("BAD\n");
+			randsig=true;
+		}
+		//elt_print("R", ap_cert.sig.val.r); elt_print("S", ap_cert.sig.val.s); elt_print("H", tmp_hash);
+		sanity--;
+	} while(res !=1 && sanity >=0);
+	
+	if(sanity<0) return 1;
+	
+	sanity=25;
+	randsig=false;
+
+	do{
+		printf("signing footer...\n");
+		calculateSha256((u8*)footer, 0x1A0, tmp_hash); //calculateSha256((u8*)&check, 4, tmp_hash);
+		res = generate_ecdsa(footer->sig.r, footer->sig.s, ap_priv, tmp_hash, randsig);
+
+		printf("re-verifying footer sig...  ");
+		calculateSha256((u8*)footer, 0x1A0, tmp_hash); //calculateSha256((u8*)&check, 4, tmp_hash);
+		res = check_ecdsa(ap_cert.pubkey.r, footer->sig.r, footer->sig.s, tmp_hash);
+		if (res == 1) {
+			printf("GOOD!\n");
+		} else {
+			printf("BAD\n");
+			randsig=true;
+		}
+		//elt_print("R", footer->sig.r); elt_print("S", footer->sig.s); elt_print("H", tmp_hash);
+		sanity--;
+	} while(res !=1 && sanity >=0);
+	
+	if(sanity<0) return 2;
+
+	
+	memcpy(&footer->ap, &ap_cert, 0x180);
+	memcpy(&footer->ct, &ct_cert, 0x180);
+	
+	printf("done signing\n");
 
 	return 0;
 }

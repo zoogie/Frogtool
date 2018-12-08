@@ -1,1 +1,0 @@
-Any valid 0x180 byte ctcert.bin + 0x1E privkey appended for a total of 0x19E bytes.

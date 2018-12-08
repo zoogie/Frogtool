@@ -10,7 +10,7 @@ TOPDIR ?= $(CURDIR)
 include $(DEVKITARM)/3ds_rules
 
 APP_TITLE = Frogtool
-APP_DESCRIPTION = v2.0 - Frogminer title manager
+APP_DESCRIPTION = v2.1 - Frogminer title manager
 APP_AUTHOR = zoogie & jason0597
 
 #---------------------------------------------------------------------------------
@@ -59,13 +59,13 @@ CXXFLAGS	:= $(CFLAGS) -fno-rtti -std=c++17
 ASFLAGS	:=	-g $(ARCH)
 LDFLAGS	=	-specs=3dsx.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map)
 
-LIBS	:= -lctru -lm -lmbedcrypto
+LIBS	:= -lctru
 
 #---------------------------------------------------------------------------------
 # list of directories containing libraries, this must be the top level containing
 # include and lib
 #---------------------------------------------------------------------------------
-LIBDIRS	:= $(CTRULIB) $(PORTLIBS)
+LIBDIRS	:= $(CTRULIB)
 
 #---------------------------------------------------------------------------------
 # no real need to edit anything past this point unless you need to add additional

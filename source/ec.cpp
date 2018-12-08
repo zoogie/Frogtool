@@ -32,17 +32,14 @@ static u8 ec_G[61] =
 	"\x8a\x0b\xef\xf8\x67\xa7\xca\x36\x71\x6f\x7e\x01\xf8\x10\x52";
 
 #if 0
-static void elt_print(const char *name1, const char *name2, u8 *a, u8 *b)
+static void elt_print(char *name, u8 *a)
 {
 	u32 i;
 
-	printf("  %s:", name1);
-	for (i = 0; i < 4; i++)
+	printf("%s = ", name);
+
+	for (i = 0; i < 30; i++)
 		printf("%02x", a[i]);
-	
-	printf("  %s:", name2);
-	for (i = 0; i < 4; i++)
-		printf("%02x", b[i]);
 
 	printf("\n");
 }
@@ -331,33 +328,33 @@ void point_mul(u8 *d, u8 *a, u8 *b)	// a is bignum
 }
 
 
-int generate_ecdsa(u8 *R, u8 *S, u8 *k, u8 *hash, u8 *Q)
+int generate_ecdsa(u8 *R, u8 *S, u8 *k, u8 *hash, bool randsig)
 {
 	u8 e[30];
 	u8 kk[30];
 	u8 m[30];
 	u8 minv[30];
 	u8 mG[60];
-	u8 temphash[32];
+	srand(time(0));
 
 	elt_zero(e);
-	//elt_zero(R);
-	//elt_zero(S);
-	memcpy(temphash, hash, 32);
-	bn_shiftr(temphash, 32, 7);
-	memcpy(e, temphash, 30);
-
-	for(int i=0;i<30;i++) m[i] = rand() & 0xFF;
-	m[0]=0;
+	bn_shiftr(hash, 32, 7);
+	memcpy(e, hash, 30);
 	
-	//	R = (mG).x
+	memset(m, 0, 30);
+
+	if(randsig){
+		for(int i=1;i<30;i++){
+			m[i]=rand() & 0xFF;
+		}
+	}
+
+	m[29]=1;
 
 	point_mul(mG, m, ec_G);
 	elt_copy(R, mG);
 	if (bn_compare(R, ec_N, 30) >= 0)
 		bn_sub_modulus(R, ec_N, 30);
-
-	//	S = m**-1*(e + Rk) (mod N)
 
 	elt_copy(kk, k);
 	if (bn_compare(kk, ec_N, 30) >= 0)
@@ -366,21 +363,7 @@ int generate_ecdsa(u8 *R, u8 *S, u8 *k, u8 *hash, u8 *Q)
 	bn_add(kk, S, e, ec_N, 30);
 	bn_inv(minv, m, ec_N, 30);
 	bn_mul(S, minv, kk, ec_N, 30);
-	
-	if(R[0] & 0xFE || S[0] & 0xFE) {
-		printf("  bad dice roll, trying again...\n");
-		return 1;
-	}
-	
-	if(check_ecdsa(Q, R, S, temphash) != 1){
-		printf("  sig verify FAIL, trying again...\n");
-		return 2;
-	}
-	else{
-		printf("  sig verify PASS!!\n");
-	}
-	
-	//elt_print("R", "S", R, S);
+
 
 	return 0;
 }
@@ -396,7 +379,7 @@ int check_ecdsa(u8 *Q, u8 *R, u8 *S, u8 *hash)
 	bn_inv(Sinv, S, ec_N, 30);
 
 	elt_zero(e);
-	//bn_shiftr(hash, 32, 7);  //shift right 7 bits.
+	bn_shiftr(hash, 32, 7);  //shift right 7 bits.
 	memcpy(e, hash, 30);     //then shift 16 more bits right by cutting off the last two bytes of 32 byte sha256.
                              //this gets our bignum sha256 hash to fit in the 233 bit limit of this ecdsa curve.
 	bn_mul(w1, e, Sinv, ec_N, 30);

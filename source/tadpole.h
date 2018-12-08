@@ -41,5 +41,6 @@ typedef struct footer_t
 
 void getSection(u8 *dsiware_pointer, u32 section_size, u8 *key, u8 *output);
 void placeSection(u8 *dsiware_pointer, u8 *section, u32 section_size, u8 *key, u8 *key_cmac);
-int doSigning(u8 *ctcert_bin, footer_t *footer);
+Result seed_check();
+Result doSigning(u8 *ctcert_bin, footer_t *footer);
 Result copyFile(const char *src, const char *dst);
