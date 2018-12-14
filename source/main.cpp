@@ -14,7 +14,7 @@
 PrintConsole topScreen, bottomScreen;
 AM_TWLPartitionInfo info;
 u8 region=42; //42 would be an error for region, which should be <= 6
-u8 havecfw=0;
+int havecfw=0;
 u8 wrongfirmware=0;
 
 const char *bkblack="\x1b[40;1m";
@@ -274,6 +274,13 @@ Result copyStuff(){
 	return 0;
 }
 
+static __attribute__((naked)) Result svcGetCFWinfo(u8 *info) {
+    asm volatile(
+            "svc 0x2E\n"
+            "bx lr"
+    );
+}
+
 int main(int argc, char* argv[])
 {
 	gfxInitDefault();
@@ -284,7 +291,8 @@ int main(int argc, char* argv[])
 	u32 BUF_SIZE = 0x20000;
 	u64 tid=0;
 	u8 op=5;
-	u32 SECOND=1000*1000*1000;
+	u8 cfwinfo[16]={0};
+	u64 SECOND=1000*1000*1000;
 	int cursor=0;
 	int showinfo=1;
 	const char *ppm="/private/ds/app/4B47554A/001/T00031_1038C2A757B77_000.ppm";
@@ -293,13 +301,19 @@ int main(int argc, char* argv[])
 	u32 kver = osGetKernelVersion();   //the current recommended frogminer guide requires firm 11.8 so we will enforce that here. if a surprise firm drops and native firm changes, this will safeguard users immediately
 	if(kver != 0x02370000){
 		wrongfirmware=1;
+	}	
+											//almost all versions of luma a9lh that can run on 11.9+ have a custom svc called svcGetCFWinfo that places the text "LUMA" at the beginning of a 16 byte buffer arg1
+	svcGetCFWinfo(cfwinfo);					//this is by no means a catch-all way to detect a9lh cfw, but it should help a bit.
+	res = memcmp(cfwinfo, "LUMA", 4);		//the reason we care about cfw is that if a9lh is present, b9sTool will 100% chance brick the user's 3ds
+	if(!res){
+		havecfw|=1;
 	}
 	
 	FS_Archive archive;
-	res = FSUSER_OpenArchive(&archive, ARCHIVE_NAND_RW, fsMakePath(PATH_EMPTY, "")); //almost all versions of luma or aureinand patch access to this archive which shouln't be available to userland
-	if(res==0){                                                                      //still, this is not a foolproof way to detect a9lh or other type of cfw is installed, but it helps
-		FSUSER_CloseArchive(archive);                                                //the reason we care about cfw is that if a9lh is present, b9sTool will 100% chance brick the user's 3ds
-		havecfw=1;
+	res = FSUSER_OpenArchive(&archive, ARCHIVE_NAND_W_FS, fsMakePath(PATH_EMPTY, "")); //another cfw check that's not likely as useful as the above
+	if(res==0){                                                                     
+		FSUSER_CloseArchive(archive); 
+		havecfw|=2;
 	}
 	
 	u8 *buf = (u8*)malloc(BUF_SIZE);
@@ -341,8 +355,8 @@ int main(int argc, char* argv[])
 		printf("movable.sed: good!\n");
 	}
 	
-	printf("\n");
-	svcSleepThread(2*SECOND);
+	printf("\nloading menu...\n");
+	svcSleepThread(3*SECOND);
 	
 	tid = 0x00048005484E4441;   //dlp
 	memcpy(fb, superfrog_bin, superfrog_bin_size);
@@ -359,7 +373,7 @@ int main(int argc, char* argv[])
 			break; // break in order to return to hbmenu
 		if(kDown & KEY_A){
 			switch(cursor){
-				case 0: if(havecfw) {printf("You already have CFW!\n\n"); break;}
+				case 0: if(havecfw) {printf("You already have CFW! %d\n\n", havecfw); break;}
 						if(wrongfirmware) {printf("You are not on the correct firmware!\n\n"); break;}
 						export_tad(tid, op, buf, ".bin"); if(doStuff()) break;
 				        import_tad(tid, op, buf, ".bin.patched"); break;
