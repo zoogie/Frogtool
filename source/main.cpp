@@ -79,7 +79,7 @@ Result export_tad(u64 tid, u8 op, u8 *workbuf, const char *ext){  //export is a 
 
 Result menuUpdate(int cursor, int showinfo){
 	consoleClear();
-	printf("%sFrogtool v2.1 - zoogie & jason0597%s\n\n", green, white);
+	printf("%sFrogtool v2.2 - zoogie & jason0597%s\n\n", green, white);
 	char menu[menu_size][128] = {
 		"INJECT  patched          DS Download Play",
 		"BOOT    patched          DS Download Play",
@@ -149,6 +149,8 @@ u8 *readAllBytes(const char *filename, u32 *filelen) {
 	fseek(fileptr, 0, SEEK_END);
 	*filelen = ftell(fileptr);
 	rewind(fileptr);
+	
+	if(*filelen>0x300000) *filelen=0x300000;
 
 	u8 *buffer = (u8*)malloc(*filelen);
 
@@ -169,7 +171,7 @@ Result doStuff() {
 	u32 dsiware_size, ctcert_size, movable_size, injection_size;
 	u8 *dsiware, *ctcert, *injection, *movable;
 	u8 header_hash[0x20], srl_hash[0x20];
-	u8 flipnote_size_LE[4] = {0x00, 0x88, 0x21, 0x00}; // the size of flipnote in little endian
+	u32 flipnote_size=0x00218800;
 	footer_t *footer=(footer_t*)malloc(SIZE_FOOTER);
 	u8 normalKey[0x10], normalKey_CMAC[0x10];
 	u8 *header = new u8[0xF0];
@@ -201,8 +203,8 @@ Result doStuff() {
 	// === HEADER ===
 	printf("Decrypting header\n");
 	getSection((dsiware + 0x4020), 0xF0, normalKey, header);
-	
-	if (header[0] != 0x33 || header[1] != 0x46 || header[2] != 0x44 || header[3] != 0x54) {
+
+	if (memcmp(header, "3FDT", 4)) {
 		printf("DECRYPTION FAILED!!!\nThis likely means the input movable.sed is wrong\nPress START to continue\n");
 		WAIT();
 		res=3;
@@ -210,7 +212,8 @@ Result doStuff() {
 	}
 
 	printf("Injecting new srl.nds size\n");
-	memcpy((header + 0x48 + 4), flipnote_size_LE, 4);
+	*(u32*)(header+0x48+4)=flipnote_size;
+	*(u32*)(header+0x40)=(flipnote_size&0xFFFF8000) | 0x20000; //after install size (estimate)
 
 	printf("Placing back header\n");
 	placeSection((dsiware + 0x4020), header, 0xF0, normalKey, normalKey_CMAC);
@@ -281,6 +284,22 @@ static __attribute__((naked)) Result svcGetCFWinfo(u8 *info) {
     );
 }
 
+Result checkFile(const char *path, const char *inhash){
+	u8 *filebuff=(u8*)malloc(0x10000);
+	u8 shabuff[0x20]={0};
+	u32 bytesread=0;
+	
+	FILE *f=fopen(path, "rb");
+	if(!f) return 2;
+	bytesread=fread(filebuff, 1, 0x10000, f);
+	fclose(f);
+	FSUSER_UpdateSha256Context(filebuff, bytesread, shabuff);
+	free(filebuff);
+	
+	if(memcmp(shabuff, inhash, 4)) return 1; //"\xa9\x76\x31\xe2"
+	return 0;
+}
+
 int main(int argc, char* argv[])
 {
 	gfxInitDefault();
@@ -325,23 +344,26 @@ int main(int argc, char* argv[])
 	printf("cfguInit: %08X\n",(int)res);
 	res = romfsInit();
 	printf("romfsInit: %08X\n",(int)res);
-	res = AM_GetTWLPartitionInfo(&info);
-	printf("twlInfo: %08X\n",(int)res);
-	res = CFGU_SecureInfoGetRegion(&region);
-	printf("region: %d\n", (int)region);
-	
-	if(access(ppm, F_OK ) != -1){ 
+	//res = AM_GetTWLPartitionInfo(&info);
+	//printf("twlInfo: %08X\n",(int)res);
+	//res = CFGU_SecureInfoGetRegion(&region);
+	//printf("region: %d\n", (int)region);
+	printf("checking ppm ...\n");
+	if(!checkFile(ppm, "\xa9\x76\x31\xe2")){ 
 		printf("ppm: ready!\n");
 	}
 	else{
+		printf("ppm not found, copying to sdmc ...\n");
 		copyStuff();
-		if(access(ppm, F_OK ) == -1){
+		printf("checking ppm again ...\n");
+		if(checkFile(ppm, "\xa9\x76\x31\xe2")){
 			printf("ERROR: Your flipnote .ppm file cannot be written!\n");
 			printf("Please copy it to sdmc manually!\n");
 			printf("(sdmc:%s)\n", ppm);
 			WAIT();
 			goto fail;
 		}
+		printf("ppm good to go!\n");
 	}
 	
 	res = seed_check();
