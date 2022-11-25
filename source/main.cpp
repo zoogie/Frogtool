@@ -317,8 +317,8 @@ int main(int argc, char* argv[])
 	const char *ppm="/private/ds/app/4B47554A/001/T00031_1038C2A757B77_000.ppm";
 	Result res;
 	
-	u32 kver = osGetKernelVersion();   //the current recommended frogminer guide requires firm 11.12 so we will kinda suggest that here. if a surprise firm drops and native firm changes, this will safeguard users immediately
-	if(kver != 0x02380000){
+	u32 kver = osGetKernelVersion();   //the current recommended frogminer guide requires firm 11.16 so we will kinda suggest that here. if a surprise firm drops and native firm changes, this will safeguard users immediately
+	if(kver != 0x023A0000){
 		wrongfirmware=1;
 	}	
 											//almost all versions of luma a9lh that can run on 11.9+ have a custom svc called svcGetCFWinfo that places the text "LUMA" at the beginning of a 16 byte buffer arg1
@@ -383,7 +383,7 @@ int main(int argc, char* argv[])
 	tid = 0x00048005484E4441;   //dlp
 	memcpy(fb, superfrog_bin, superfrog_bin_size);
 	menuUpdate(cursor, showinfo);
-	if(wrongfirmware) printf("\n\nWARNING!!\nYou are not on the expected firmware!\n(firm 11.12.0-X)\n");
+	if(wrongfirmware) printf("\n\nWARNING!!\nYou are not on the expected firmware!\n(firm 11.16.0-X)\n");
 	
 	while (aptMainLoop())
 	{
@@ -401,7 +401,7 @@ int main(int argc, char* argv[])
 						export_tad(tid, op, buf, ".bin"); if(doStuff()) break;
 				        import_tad(tid, op, buf, ".bin.patched"); break;
 				case 1: //if(havecfw) {printf("You already have CFW!\n\n"); break;}
-						//if(wrongfirmware) {printf("You are not on firm 11.8.0-XX!\n\n"); break;}
+						//if(wrongfirmware) {printf("You are not on firm 11.16.0-XX!\n\n"); break;}
 						printf("Booting dlp now ...\n");
 						NS_RebootToTitle(0, tid); 
 						while(1)gspWaitForVBlank();

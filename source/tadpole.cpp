@@ -1,6 +1,8 @@
 #include <3ds.h>
 #include <cstring>
 #include <cstdio>
+#include <cstdlib>
+#include <ctype.h>
 #include "crypto.h"
 #include "tadpole.h"
 #include "ec.h"
