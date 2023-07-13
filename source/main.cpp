@@ -181,7 +181,7 @@ Result doStuff(u64 tid) {
 	ctcert = (u8*)malloc(ctcert_size);
 	
 	snprintf(tidname, 55, "/%08lX.bin", (u32)(tid & 0xffffffff));
-	printf("Reading sdmc:/%08lX.bin\n", (u32)(tid & 0xffffffff));
+	printf("Reading sdmc:%08lX.bin\n", (u32)(tid & 0xffffffff));
 	dsiware = readAllBytes(tidname, &dsiware_size);
 	printf("Reading & parsing sdmc:/movable.sed\n");
 	movable = readAllBytes("/movable.sed", &movable_size);
@@ -257,8 +257,9 @@ Result doStuff(u64 tid) {
 	placeSection((dsiware + 0x4130), (u8*)footer, 0x4E0, normalKey, normalKey_CMAC);
 	delete[] footer;
 	
-	printf("Writing sdmc:/484E4441.bin.patched...\n");
-	writeAllBytes("/484E4441.bin.patched", dsiware, dsiware_size);
+	snprintf(tidname, 55, "/%08lX.bin.patched", (u32)(tid & 0xffffffff));
+	printf("Writing sdmc:%s...\n", tidname);
+	writeAllBytes(tidname, dsiware, dsiware_size);
 	printf("Done!\n\n");
 
 	fail:
