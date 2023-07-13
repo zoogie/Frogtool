@@ -3,7 +3,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <ctype.h>
-#include "crypto.h"
+#include "utils/crypto.h"
 #include "tadpole.h"
 #include "ec.h"
 

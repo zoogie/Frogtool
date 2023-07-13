@@ -1,4 +1,6 @@
 #include <3ds.h>
+#include <vector>
+#include <array>
 #include "aes-cbc-cmac.h"
 #include "crypto.h"
 
