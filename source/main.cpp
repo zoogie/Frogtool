@@ -166,7 +166,7 @@ void writeAllBytes(const char* filename, u8 *filedata, u32 filelen) {
 	fclose(fileptr);
 }
 
-Result doStuff() {
+Result doStuff(u64 tid) {
 	Result res=0;
 	u32 dsiware_size, ctcert_size, movable_size, injection_size;
 	u8 *dsiware, *ctcert, *injection, *movable;
@@ -175,12 +175,14 @@ Result doStuff() {
 	footer_t *footer=(footer_t*)malloc(SIZE_FOOTER);
 	u8 normalKey[0x10], normalKey_CMAC[0x10];
 	u8 *header = new u8[0xF0];
+	char tidname[128]={0};
 	
 	ctcert_size = 0x19E;
 	ctcert = (u8*)malloc(ctcert_size);
 	
-	printf("Reading sdmc:/484E4441.bin\n");
-	dsiware = readAllBytes("/484E4441.bin", &dsiware_size);
+	snprintf(tidname, 55, "/%08lX.bin", (u32)(tid & 0xffffffff));
+	printf("Reading sdmc:/%08lX.bin\n", (u32)(tid & 0xffffffff));
+	dsiware = readAllBytes(tidname, &dsiware_size);
 	printf("Reading & parsing sdmc:/movable.sed\n");
 	movable = readAllBytes("/movable.sed", &movable_size);
 	printf("Reading sdmc:/frogcert.bin\n");
@@ -400,7 +402,7 @@ int main(int argc, char* argv[])
 			switch(cursor){
 				case 0: if(havecfw) {printf("You already have CFW! %d\n\n", havecfw); break;}
 						//if(wrongfirmware) {printf("You are not on the correct firmware!\n\n"); break;}
-						export_tad(tid, op, buf, ".bin"); if(doStuff()) break;
+						export_tad(tid, op, buf, ".bin"); if(doStuff(tid)) break;
 				        import_tad(tid, op, buf, ".bin.patched"); break;
 				case 1: //if(havecfw) {printf("You already have CFW!\n\n"); break;}
 						//if(wrongfirmware) {printf("You are not on firm 11.16.0-XX!\n\n"); break;}
