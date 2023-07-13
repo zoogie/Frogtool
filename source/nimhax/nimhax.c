@@ -327,13 +327,11 @@ Result funWithNim() {
 // ---------------------------------------
 
 static Result check_nim_version() {
-// am is already initialized in frogtool
-/*
+
 	Result ret = amInit();
 	if(R_FAILED(ret))
 		return ret;
-*/
-	Result ret;
+
 	u64 nim_tid = 0x0004013000002C02LLU;
 	AM_TitleEntry title_entry;
 
@@ -344,7 +342,7 @@ static Result check_nim_version() {
 		else ret = 0;
 	}
 
-	//amExit();
+	amExit();
 	return ret;
 }
 

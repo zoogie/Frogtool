@@ -826,11 +826,11 @@ Result initialize_ctr_httpwn(const char* serverconfig_localpath) {
 		else
 		{
 			ret = httpwn_setup(serverconfig_localpath);
-			// amExit(); // don't exit am, we need it in frogtool
+			amExit();
 		}
 	}
 
-//	romfsExit(); // don't exit romfs, we need it in frogtool
+	//romfsExit(); don't exit romfs
 
 	if(ret == RES_OS_REMOTE_SESSION_CLOSED)
 		printf("This error means the HTTP sysmodule crashed.\n");
