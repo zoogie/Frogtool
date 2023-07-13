@@ -346,8 +346,8 @@ int main(int argc, char* argv[])
 	printf("romfsInit: %08X\n",(int)res);
 	//res = AM_GetTWLPartitionInfo(&info);
 	//printf("twlInfo: %08X\n",(int)res);
-	//res = CFGU_SecureInfoGetRegion(&region);
-	//printf("region: %d\n", (int)region);
+	res = CFGU_SecureInfoGetRegion(&region);
+	printf("region: %d\n", (int)region);
 	printf("checking ppm ...\n");
 	if(!checkFile(ppm, "\xa9\x76\x31\xe2")){ 
 		printf("ppm: ready!\n");
@@ -381,6 +381,8 @@ int main(int argc, char* argv[])
 	svcSleepThread(3*SECOND);
 	
 	tid = 0x00048005484E4441;   //dlp
+	if	(region == 4) tid = 0x00048005484E4443; //chn
+	else if	(region == 5) tid = 0x00048005484E444B; //kor
 	memcpy(fb, superfrog_bin, superfrog_bin_size);
 	menuUpdate(cursor, showinfo);
 	if(wrongfirmware) printf("\n\nWARNING!!\nYou are not on the expected firmware!\n(firm 11.16.0-X)\n");
