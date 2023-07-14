@@ -8,6 +8,7 @@ https://jisagi.github.io/FrogminerGuide/ or https://3ds.hacks.guide/
 ## Thanks
  * [jason0597](https://github.com/jason0597) - for about 75% of the [TAD crypto code](https://github.com/jason0597/TADPole-3DS/)
  * Daniel (Nintendo Homebrew Discord #4420) - for the icon and bottom screen banner
+ * [luigoalma](https://github.com/luigoalma) - [nimhax](https://github.com/luigoalma/nimhax)
 
 ## Libraries used
  * [Texas Instruments AES-128 CBC and AES CMAC functions](https://github.com/flexibity-team/AES-CMAC-RFC)

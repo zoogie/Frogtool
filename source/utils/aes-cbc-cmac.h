@@ -31,6 +31,10 @@
 #define BLOCK_SIZE 16
 #define LAST_INDEX (BLOCK_SIZE - 1)
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 int AES_CBC_ENC(const unsigned char *IV, const unsigned char *key,
 		const unsigned char *input, int inputLength, unsigned char *output,
 		int outputLength);
@@ -52,6 +56,10 @@ void AES_128_DEC(unsigned const char *key, unsigned const char* msg, unsigned ch
 void print_hex(const char *str, const unsigned char *buf, int len);
 void print128(const unsigned char *bytes);
 void print96(const unsigned char *bytes);
+#endif
+
+#ifdef __cplusplus
+}
 #endif
 
 #endif /* AES_CBC_CMAC_H_ */

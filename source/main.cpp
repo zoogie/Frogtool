@@ -4,7 +4,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <dirent.h>
-#include "crypto.h"
+#include "utils/crypto.h"
 #include "tadpole.h"
 #include "superfrog_bin.h"
 
@@ -303,6 +303,8 @@ Result checkFile(const char *path, const char *inhash){
 	return 0;
 }
 
+extern "C" int nimhax(void);
+
 int main(int argc, char* argv[])
 {
 	gfxInitDefault();
@@ -339,8 +341,6 @@ int main(int argc, char* argv[])
 	}
 	
 	u8 *buf = (u8*)malloc(BUF_SIZE);
-	res = amInit();
-	printf("amInit: %08X\n",(int)res);
 	res = nsInit();
 	printf("nsInit: %08X\n",(int)res);
 	res = cfguInit();
@@ -351,6 +351,26 @@ int main(int argc, char* argv[])
 	//printf("twlInfo: %08X\n",(int)res);
 	res = CFGU_SecureInfoGetRegion(&region);
 	printf("region: %d\n", (int)region);
+
+	if(access("/movable.sed", F_OK)) {
+		printf("movable.sed not found, trying nimhax\n");
+		nimhax(); // if this fails, it will exit here
+	}
+
+	res = amInit();
+	printf("amInit: %08X\n",(int)res);
+
+	res = seed_check();
+	if(res){
+		if(res==3)printf("ERROR: sdmc:/movable.sed keyy isn't correct!\n");
+		else printf("ERROR: sdmc:/movable.sed couldn't be read!\nDid you forget it?\n");
+		WAIT();
+		goto fail;
+	}
+	else{
+		printf("movable.sed: good!\n");
+	}
+	
 	printf("checking ppm ...\n");
 	if(!checkFile(ppm, "\xa9\x76\x31\xe2")){ 
 		printf("ppm: ready!\n");
@@ -367,17 +387,6 @@ int main(int argc, char* argv[])
 			goto fail;
 		}
 		printf("ppm good to go!\n");
-	}
-	
-	res = seed_check();
-	if(res){
-		if(res==3)printf("ERROR: sdmc:/movable.sed keyy isn't correct!\n");
-		else printf("ERROR: sdmc:/movable.sed couldn't be read!\nDid you forget it?\n");
-		WAIT();
-		goto fail;
-	}
-	else{
-		printf("movable.sed: good!\n");
 	}
 	
 	printf("\nloading menu...\n");
